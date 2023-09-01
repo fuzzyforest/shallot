@@ -1,115 +1,30 @@
-use anyhow::{bail, Context, Result};
-use std::{
-    iter::{Enumerate, Peekable},
-    str::Chars,
-};
+use anyhow::{anyhow, bail, Context, Result};
+use std::iter::Peekable;
 
-#[derive(Debug)]
-struct Token {
-    value: String,
-    position: usize,
+mod token;
+use token::*;
+mod errors;
+use errors::*;
+
+#[derive(Clone, Debug)]
+enum Expression {
+    Symbol(String),
+    Number(f64),
+    List(Vec<Expression>),
 }
 
-struct TokenIterator<'a> {
-    input: Peekable<Enumerate<Chars<'a>>>,
-}
+impl TryFrom<&Expression> for f64 {
+    type Error = TypeError;
 
-impl<'a> Iterator for TokenIterator<'a> {
-    type Item = Token;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while self.input.next_if(|c| c.1.is_whitespace()).is_some() {}
-
-        // NOTE: The first character is not whitespace
-        match self.input.peek() {
-            Some((_, '(' | ')')) => self.input.next().map(|c| Token {
-                value: c.1.into(),
-                position: c.0,
+    fn try_from(value: &Expression) -> std::result::Result<Self, Self::Error> {
+        match value {
+            Expression::Number(number) => Ok(*number),
+            _ => Err(TypeError {
+                expected: "Number",
+                got: value.variant(),
             }),
-            Some((position, ';')) => {
-                let position = *position;
-                let mut comment_token = String::new();
-                while let Some(c) = self.input.next_if(|c| c.1 != '\n') {
-                    comment_token.push(c.1)
-                }
-                Some(Token {
-                    value: comment_token,
-                    position,
-                })
-            }
-            Some((position, '"')) => {
-                let position = *position;
-                let mut multi_word_token = "\"".to_owned();
-                self.input.next();
-                loop {
-                    match self.input.peek() {
-                        Some((_, '\\')) => {
-                            self.input.next();
-                            match self.input.peek() {
-                                Some((_, '\"')) => {
-                                    multi_word_token.push('"');
-                                    self.input.next();
-                                }
-                                Some((_, '\\')) => {
-                                    multi_word_token.push('\\');
-                                    self.input.next();
-                                }
-                                Some((_, c)) => {
-                                    multi_word_token.push('\\');
-                                    multi_word_token.push(*c);
-                                    self.input.next();
-                                }
-                                None => {
-                                    multi_word_token.push('\\');
-                                }
-                            }
-                        }
-                        Some((_, '"')) => {
-                            multi_word_token.push('"');
-                            self.input.next();
-                            break;
-                        }
-                        Some((_, c)) => {
-                            multi_word_token.push(*c);
-                            self.input.next();
-                        }
-                        None => break,
-                    }
-                }
-                Some(Token {
-                    value: multi_word_token,
-                    position,
-                })
-            }
-            Some((position, _)) => {
-                let position = *position;
-                let mut token = String::new();
-                while let Some(c) = self
-                    .input
-                    .next_if(|c| !(c.1.is_whitespace() || "()".contains(c.1)))
-                {
-                    token.push(c.1)
-                }
-                Some(Token {
-                    value: token,
-                    position,
-                })
-            }
-            None => None,
         }
     }
-}
-
-fn tokenize<'a>(input: &'a str) -> TokenIterator {
-    TokenIterator {
-        input: input.chars().enumerate().peekable(),
-    }
-}
-
-#[derive(Debug)]
-enum Expression {
-    Atom(String),
-    List(Vec<Expression>),
 }
 
 impl Expression {
@@ -128,16 +43,87 @@ impl Expression {
                 tokens.next();
                 Ok(Expression::List(expressions))
             }
-            Some(token) => return Ok(Expression::Atom(token.value.clone())),
+            Some(token) if token.value == ")" => {
+                bail!("Unexpected close bracket at {}", token.position)
+            }
+            Some(token) => {
+                if let Ok(value_as_float) = token.value.parse() {
+                    Ok(Expression::Number(value_as_float))
+                } else {
+                    Ok(Expression::Symbol(token.value.clone()))
+                }
+            }
             None => bail!("Ran out of tokens"),
+        }
+    }
+
+    fn variant(&self) -> &'static str {
+        match self {
+            Expression::Symbol(_) => "Symbol",
+            Expression::Number(_) => "Number",
+            Expression::List(_) => "List",
+        }
+    }
+
+    fn eval(&self) -> Result<Expression> {
+        match self {
+            Expression::List(list) => {
+                let function: Expression = list
+                    .get(0)
+                    .ok_or_else(|| anyhow!("Attempt to evaluate empty list"))
+                    .and_then(|e| e.eval())
+                    .with_context(|| anyhow!("Could not evaluate head of list"))?;
+                let arguments: Vec<Expression> = list[1..]
+                    .iter()
+                    .enumerate()
+                    .map(|(n, e)| {
+                        e.eval()
+                            .with_context(|| anyhow!("Argument number {}: {:?}", n + 1, e))
+                    })
+                    .collect::<Result<Vec<_>>>()
+                    .with_context(|| anyhow!("Could not evaluate arguments to {:?}", function))?;
+                match function {
+                    Expression::Symbol(s) if s == "+" => {
+                        let arguments: Vec<f64> = arguments
+                            .iter()
+                            .enumerate()
+                            .map(|(n, e)| {
+                                e.try_into()
+                                    .with_context(|| anyhow!("Argument number {}: {:?}", n + 1, e))
+                            })
+                            .collect::<std::result::Result<Vec<f64>, _>>()
+                            .context("Arguments to add are not all numbers")?;
+                        Ok(Expression::Number(arguments.iter().sum()))
+                    }
+                    Expression::Symbol(s) if s == "*" => {
+                        let arguments: Vec<f64> = arguments
+                            .iter()
+                            .enumerate()
+                            .map(|(n, e)| {
+                                e.try_into()
+                                    .with_context(|| anyhow!("Argument number {}: {:?}", n + 1, e))
+                            })
+                            .collect::<std::result::Result<Vec<f64>, _>>()
+                            .context("Arguments to mul are not all numbers")?;
+                        Ok(Expression::Number(arguments.iter().product()))
+                    }
+                    _ => {
+                        bail!("Cannot call {:?} as a function", function)
+                    }
+                }
+            }
+            expression => Ok(expression.clone()),
         }
     }
 }
 
 fn main() -> Result<()> {
-    let program = r#"(+ (* 2 3) 4)"#;
+    let program = r#"(+ 1 (* 2 3) 4.3)"#;
     let mut tokens = tokenize(program).peekable();
-    dbg!(Expression::parse(&mut tokens)?);
-    dbg!(tokens.collect::<Vec<_>>());
+    let expression: Expression = Expression::parse(&mut tokens)?;
+    let result = expression
+        .eval()
+        .context("While evaluating root expression")?;
+    dbg!(result);
     Ok(())
 }
