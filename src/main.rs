@@ -1,129 +1,78 @@
-use anyhow::{anyhow, bail, Context, Result};
-use std::iter::Peekable;
+use std::io::{Read, Write};
+use std::path::PathBuf;
 
-mod token;
-use token::*;
-mod errors;
-use errors::*;
+use anyhow::{anyhow, Context, Result};
+use shallot::*;
 
-#[derive(Clone, Debug)]
-enum Expression {
-    Symbol(String),
-    Number(f64),
-    List(Vec<Expression>),
+#[derive(Debug, Default)]
+struct Arguments {
+    path: Option<PathBuf>,
+    interactive: bool,
 }
 
-impl TryFrom<&Expression> for f64 {
-    type Error = TypeError;
-
-    fn try_from(value: &Expression) -> std::result::Result<Self, Self::Error> {
-        match value {
-            Expression::Number(number) => Ok(*number),
-            _ => Err(TypeError {
-                expected: "Number",
-                got: value.variant(),
-            }),
+fn get_arguments() -> Arguments {
+    // TODO Help message
+    // TODO Errors if incorrect arguments
+    let mut arguments = Arguments::default();
+    for argument in std::env::args().skip(1) {
+        if argument == "-i" {
+            arguments.interactive = true;
+        } else {
+            arguments.path = Some(argument.into());
         }
     }
-}
-
-impl Expression {
-    fn parse<I>(tokens: &mut Peekable<I>) -> Result<Expression>
-    where
-        I: Iterator<Item = Token>,
-    {
-        match tokens.next() {
-            Some(token) if token.value == "(" => {
-                let mut expressions = Vec::new();
-                while !matches!(tokens.peek(), Some(token) if token.value == ")") {
-                    expressions.push(Expression::parse(tokens).with_context(|| {
-                        format!("While parsing list that began at {}", token.position)
-                    })?);
-                }
-                tokens.next();
-                Ok(Expression::List(expressions))
-            }
-            Some(token) if token.value == ")" => {
-                bail!("Unexpected close bracket at {}", token.position)
-            }
-            Some(token) => {
-                if let Ok(value_as_float) = token.value.parse() {
-                    Ok(Expression::Number(value_as_float))
-                } else {
-                    Ok(Expression::Symbol(token.value.clone()))
-                }
-            }
-            None => bail!("Ran out of tokens"),
-        }
+    if arguments.path.is_none() {
+        arguments.interactive = true;
     }
-
-    fn variant(&self) -> &'static str {
-        match self {
-            Expression::Symbol(_) => "Symbol",
-            Expression::Number(_) => "Number",
-            Expression::List(_) => "List",
-        }
-    }
-
-    fn eval(&self) -> Result<Expression> {
-        match self {
-            Expression::List(list) => {
-                let function: Expression = list
-                    .get(0)
-                    .ok_or_else(|| anyhow!("Attempt to evaluate empty list"))
-                    .and_then(|e| e.eval())
-                    .with_context(|| anyhow!("Could not evaluate head of list"))?;
-                let arguments: Vec<Expression> = list[1..]
-                    .iter()
-                    .enumerate()
-                    .map(|(n, e)| {
-                        e.eval()
-                            .with_context(|| anyhow!("Argument number {}: {:?}", n + 1, e))
-                    })
-                    .collect::<Result<Vec<_>>>()
-                    .with_context(|| anyhow!("Could not evaluate arguments to {:?}", function))?;
-                match function {
-                    Expression::Symbol(s) if s == "+" => {
-                        let arguments: Vec<f64> = arguments
-                            .iter()
-                            .enumerate()
-                            .map(|(n, e)| {
-                                e.try_into()
-                                    .with_context(|| anyhow!("Argument number {}: {:?}", n + 1, e))
-                            })
-                            .collect::<std::result::Result<Vec<f64>, _>>()
-                            .context("Arguments to add are not all numbers")?;
-                        Ok(Expression::Number(arguments.iter().sum()))
-                    }
-                    Expression::Symbol(s) if s == "*" => {
-                        let arguments: Vec<f64> = arguments
-                            .iter()
-                            .enumerate()
-                            .map(|(n, e)| {
-                                e.try_into()
-                                    .with_context(|| anyhow!("Argument number {}: {:?}", n + 1, e))
-                            })
-                            .collect::<std::result::Result<Vec<f64>, _>>()
-                            .context("Arguments to mul are not all numbers")?;
-                        Ok(Expression::Number(arguments.iter().product()))
-                    }
-                    _ => {
-                        bail!("Cannot call {:?} as a function", function)
-                    }
-                }
-            }
-            expression => Ok(expression.clone()),
-        }
-    }
+    arguments
 }
 
 fn main() -> Result<()> {
-    let program = r#"(+ 1 (* 2 3) 4.3)"#;
-    let mut tokens = tokenize(program).peekable();
-    let expression: Expression = Expression::parse(&mut tokens)?;
-    let result = expression
-        .eval()
-        .context("While evaluating root expression")?;
-    dbg!(result);
+    let arguments = get_arguments();
+    if let Some(path) = arguments.path {
+        let input = match path.to_str() {
+            Some("-") => {
+                let mut input = String::new();
+                std::io::stdin()
+                    .read_to_string(&mut input)
+                    .context("Could not read line")?;
+                input
+            }
+            _ => std::fs::read_to_string(&path).with_context(|| {
+                anyhow!(
+                    "Could not read from {}",
+                    path.to_str().unwrap_or("<Non-UTF8-Path>")
+                )
+            })?,
+        };
+
+        let result = evaluate(&input)?;
+
+        println!("{}", result);
+    }
+    if arguments.interactive {
+        'repl: loop {
+            print!("🧅 ");
+            std::io::stdout()
+                .flush()
+                .context("Could not flush prompt")?;
+            let mut input_line = String::new();
+            std::io::stdin()
+                .read_line(&mut input_line)
+                .context("Could not read line")?;
+            if input_line.is_empty() {
+                break 'repl;
+            }
+            if input_line.chars().all(|c| c.is_whitespace()) {
+                continue;
+            }
+            let result = evaluate(&input_line);
+            match result {
+                Ok(result) => println!("{}", result),
+                Err(error) => println!("{:?}", error),
+            }
+        }
+    }
+
     Ok(())
 }
