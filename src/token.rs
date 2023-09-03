@@ -21,7 +21,7 @@ impl<'a> Iterator for TokenIterator<'a> {
 
         // NOTE: The first character is not whitespace
         match self.input.peek() {
-            Some((_, '(' | ')')) => self.input.next().map(|c| Token {
+            Some((_, '(' | ')' | '\'')) => self.input.next().map(|c| Token {
                 value: c.1.into(),
                 position: c.0,
             }),

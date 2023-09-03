@@ -29,6 +29,21 @@ fn get_arguments() -> Arguments {
 
 fn main() -> Result<()> {
     let arguments = get_arguments();
+    let mut environment: Environment<Expression> = Environment::default();
+    // Default bindings
+    environment.set(Symbol("pi".to_owned()), 3.1415);
+    environment.set(Symbol("+".to_owned()), BuiltinFunction(builtins::add));
+    environment.set(Symbol("*".to_owned()), BuiltinFunction(builtins::mul));
+    environment.set(Symbol("-".to_owned()), BuiltinFunction(builtins::sub));
+    environment.set(Symbol("/".to_owned()), BuiltinFunction(builtins::div));
+    environment.set(Symbol("list".to_owned()), BuiltinFunction(builtins::list));
+    environment.set(Symbol("=".to_owned()), BuiltinFunction(builtins::eq));
+    environment.set(
+        Symbol("define".to_owned()),
+        BuiltinFunction(builtins::define),
+    );
+    environment.set(Symbol("'".to_owned()), BuiltinMacro(builtins::quote));
+
     if let Some(path) = arguments.path {
         let input = match path.to_str() {
             Some("-") => {
@@ -46,7 +61,7 @@ fn main() -> Result<()> {
             })?,
         };
 
-        let result = evaluate(&input)?;
+        let result = evaluate(&input, &mut environment)?;
 
         println!("{}", result);
     }
@@ -66,10 +81,14 @@ fn main() -> Result<()> {
             if input_line.chars().all(|c| c.is_whitespace()) {
                 continue;
             }
-            let result = evaluate(&input_line);
+            if input_line == "#env\n" {
+                println!("{environment}");
+                continue 'repl;
+            }
+            let result = evaluate(&input_line, &mut environment);
             match result {
-                Ok(result) => println!("{}", result),
-                Err(error) => println!("{:?}", error),
+                Ok(result) => println!("{result}"),
+                Err(error) => println!("{error:?}"),
             }
         }
     }

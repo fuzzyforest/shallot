@@ -1,25 +1,37 @@
 use anyhow::{anyhow, bail, Context, Result};
+pub use atoms::*;
 use std::{fmt::Display, iter::Peekable};
 
+mod atoms;
 mod token;
 pub use token::tokenize;
 use token::*;
 mod errors;
 use errors::*;
-mod builtins;
+pub mod builtins;
+mod environment;
+pub use environment::*;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expression {
-    Symbol(String),
+    Symbol(Symbol),
     Number(f64),
     List(Vec<Expression>),
+    BuiltinFunction(BuiltinFunction<Expression>),
+    BuiltinMacro(BuiltinMacro<Expression>),
 }
 
 impl Display for Expression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expression::Symbol(symbol) => {
-                write!(f, "\x1b[0;32m{}\x1b[0m", symbol)
+                write!(f, "{}", symbol)
+            }
+            Expression::BuiltinFunction(builtin) => {
+                write!(f, "{}", builtin)
+            }
+            Expression::BuiltinMacro(macr) => {
+                write!(f, "{}", macr)
             }
             Expression::Number(number) => {
                 write!(f, "\x1b[0;36m{}\x1b[0m", number)
@@ -60,7 +72,20 @@ impl Expression {
                     })?);
                 }
                 tokens.next();
-                Ok(Expression::List(expressions))
+                let mut quoted_expressions = Vec::new();
+                let mut expressions = expressions.into_iter().peekable();
+                while let Some(expr) = expressions.next() {
+                    if expr == Symbol("'".to_owned()).into() {
+                        if let Some(next) = expressions.next() {
+                            quoted_expressions.push(Expression::List(vec![expr, next]))
+                        } else {
+                            bail!("Trailing quote in input")
+                        }
+                    } else {
+                        quoted_expressions.push(expr);
+                    }
+                }
+                Ok(Expression::List(quoted_expressions))
             }
             Some(token) if token.value == ")" => {
                 bail!("Unexpected close bracket at {}", token.position)
@@ -69,7 +94,7 @@ impl Expression {
                 if let Ok(value_as_float) = token.value.parse() {
                     Ok(Expression::Number(value_as_float))
                 } else {
-                    Ok(Expression::Symbol(token.value.clone()))
+                    Ok(Expression::Symbol(Symbol(token.value.clone())))
                 }
             }
             None => bail!("Ran out of tokens"),
@@ -78,44 +103,77 @@ impl Expression {
 
     fn variant(&self) -> &'static str {
         match self {
-            Expression::Symbol(_) => "Symbol",
-            Expression::Number(_) => "Number",
-            Expression::List(_) => "List",
+            Expression::Symbol(_) => "symbol",
+            Expression::Number(_) => "number",
+            Expression::List(_) => "list",
+            Expression::BuiltinFunction(_) => "builtin function",
+            Expression::BuiltinMacro(_) => "builtin macro",
         }
     }
 
-    pub fn eval(&self) -> Result<Expression> {
+    pub fn eval(&self, env: &mut Environment<Self>) -> Result<Self> {
         match self {
             Expression::List(list) => {
                 let function: Expression = list
                     .get(0)
                     .ok_or_else(|| anyhow!("Attempt to evaluate empty list"))
-                    .and_then(|e| e.eval())
+                    .and_then(|e| e.eval(env))
                     .with_context(|| anyhow!("Could not evaluate head of list"))?;
-                let arguments: Vec<Expression> = list[1..]
-                    .iter()
-                    .enumerate()
-                    .map(|(n, e)| {
-                        e.eval()
-                            .with_context(|| anyhow!("Argument number {}: {:?}", n + 1, e))
-                    })
-                    .collect::<Result<Vec<_>>>()
-                    .with_context(|| anyhow!("Could not evaluate arguments to {:?}", function))?;
                 match function {
-                    Expression::Symbol(s) if s == "+" => builtins::add(&arguments),
-                    Expression::Symbol(s) if s == "*" => builtins::mul(&arguments),
-                    Expression::Symbol(s) if s == "list" => builtins::list(&arguments),
+                    Expression::BuiltinFunction(func) => {
+                        let arguments: Vec<Expression> = list[1..]
+                            .iter()
+                            .enumerate()
+                            .map(|(n, e)| {
+                                e.eval(env)
+                                    .with_context(|| anyhow!("Argument number {}: {:?}", n + 1, e))
+                            })
+                            .collect::<Result<Vec<_>>>()
+                            .with_context(|| {
+                                anyhow!("Could not evaluate arguments to {:?}", func)
+                            })?;
+                        func.0(&arguments, env)
+                    }
+                    Expression::BuiltinMacro(func) => func.0(&list[1..], env),
                     _ => {
                         bail!("Cannot call {:?} as a function", function)
                     }
                 }
             }
+            Expression::Symbol(symbol) => env
+                .get(symbol)
+                .cloned()
+                .ok_or_else(|| anyhow!("Variable `{}` unbound", symbol)),
             expression => Ok(expression.clone()),
         }
     }
 }
 
-pub fn evaluate(input: &str) -> Result<Expression> {
+impl From<Symbol> for Expression {
+    fn from(value: Symbol) -> Self {
+        Expression::Symbol(value)
+    }
+}
+
+impl From<f64> for Expression {
+    fn from(value: f64) -> Self {
+        Expression::Number(value)
+    }
+}
+
+impl From<BuiltinFunction<Expression>> for Expression {
+    fn from(value: BuiltinFunction<Expression>) -> Self {
+        Expression::BuiltinFunction(value)
+    }
+}
+
+impl From<BuiltinMacro<Expression>> for Expression {
+    fn from(value: BuiltinMacro<Expression>) -> Self {
+        Expression::BuiltinMacro(value)
+    }
+}
+
+pub fn evaluate(input: &str, env: &mut Environment<Expression>) -> Result<Expression> {
     let mut tokens = tokenize(&input).peekable();
     let expression = Expression::parse(&mut tokens)
         .with_context(|| anyhow!("Could not parse input {}", input))?;
@@ -123,6 +181,6 @@ pub fn evaluate(input: &str) -> Result<Expression> {
         bail!("Extra tokens in line")
     }
     expression
-        .eval()
+        .eval(env)
         .with_context(|| anyhow!("Could not evaluate input {}", input))
 }
