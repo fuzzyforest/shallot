@@ -12,6 +12,8 @@ pub mod builtins;
 mod environment;
 pub use environment::*;
 
+// TODO Symbol interning?
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expression {
     Symbol(Symbol),
@@ -19,6 +21,8 @@ pub enum Expression {
     List(Vec<Expression>),
     BuiltinFunction(BuiltinFunction<Expression>),
     BuiltinMacro(BuiltinMacro<Expression>),
+    Lambda(Lambda<Expression>),
+    Macro(Macro<Expression>),
 }
 
 impl Display for Expression {
@@ -40,6 +44,12 @@ impl Display for Expression {
                 let elements: Vec<String> = list.iter().map(|e| e.to_string()).collect();
                 write!(f, "({})", elements.join(" "))
             }
+            Expression::Lambda(lambda) => {
+                write!(f, "{}", lambda)
+            }
+            Expression::Macro(macr) => {
+                write!(f, "{}", macr)
+            }
         }
     }
 }
@@ -52,6 +62,20 @@ impl TryFrom<&Expression> for f64 {
             Expression::Number(number) => Ok(*number),
             _ => Err(TypeError {
                 expected: "Number",
+                got: value.variant(),
+            }),
+        }
+    }
+}
+
+impl TryFrom<&Expression> for Symbol {
+    type Error = TypeError;
+
+    fn try_from(value: &Expression) -> std::result::Result<Self, Self::Error> {
+        match value {
+            Expression::Symbol(symbol) => Ok(symbol.clone()),
+            _ => Err(TypeError {
+                expected: "symbol",
                 got: value.variant(),
             }),
         }
@@ -108,6 +132,8 @@ impl Expression {
             Expression::List(_) => "list",
             Expression::BuiltinFunction(_) => "builtin function",
             Expression::BuiltinMacro(_) => "builtin macro",
+            Expression::Lambda(_) => "lambda",
+            Expression::Macro(_) => "macro",
         }
     }
 
@@ -132,9 +158,62 @@ impl Expression {
                             .with_context(|| {
                                 anyhow!("Could not evaluate arguments to {:?}", func)
                             })?;
-                        func.0(&arguments, env)
+                        (func.function)(&arguments, env)
                     }
-                    Expression::BuiltinMacro(func) => func.0(&list[1..], env),
+                    Expression::Lambda(lambda) => {
+                        let arguments: Vec<Expression> = list[1..]
+                            .iter()
+                            .enumerate()
+                            .map(|(n, e)| {
+                                e.eval(env)
+                                    .with_context(|| anyhow!("Argument number {}: {:?}", n + 1, e))
+                            })
+                            .collect::<Result<Vec<_>>>()
+                            .with_context(|| {
+                                anyhow!("Could not evaluate arguments to {:?}", lambda)
+                            })?;
+                        if arguments.len() > lambda.parameters.len() {
+                            bail!("Too many arguments to lambda")
+                        }
+                        let mut env: Environment<Self> = lambda.env.clone();
+                        for (parameter, argument) in lambda.parameters.iter().zip(&arguments) {
+                            env.set(parameter.clone(), argument.clone())
+                        }
+                        if arguments.len() < lambda.parameters.len() {
+                            Ok(Lambda {
+                                parameters: lambda.parameters[arguments.len()..].to_vec(),
+                                env,
+                                value: lambda.value,
+                            }
+                            .into())
+                        } else {
+                            lambda.value.eval(&mut env)
+                        }
+                    }
+                    Expression::BuiltinMacro(func) => (func.function)(&list[1..], env),
+                    Expression::Macro(macr) => {
+                        let arguments = &list[1..];
+                        if arguments.len() > macr.parameters.len() {
+                            bail!("Too many arguments to lambda")
+                        }
+                        let mut macro_env: Environment<Self> = macr.env.clone();
+                        for (parameter, argument) in macr.parameters.iter().zip(arguments) {
+                            macro_env.set(parameter.clone(), argument.clone())
+                        }
+                        if arguments.len() < macr.parameters.len() {
+                            Ok(Macro {
+                                parameters: macr.parameters[arguments.len()..].to_vec(),
+                                env: macro_env,
+                                value: macr.value,
+                            }
+                            .into())
+                        } else {
+                            macr.value
+                                .eval(&mut macro_env)
+                                .context("Could not expand macro")?
+                                .eval(env)
+                        }
+                    }
                     _ => {
                         bail!("Cannot call {:?} as a function", function)
                     }
@@ -152,6 +231,18 @@ impl Expression {
 impl From<Symbol> for Expression {
     fn from(value: Symbol) -> Self {
         Expression::Symbol(value)
+    }
+}
+
+impl From<Lambda<Expression>> for Expression {
+    fn from(value: Lambda<Expression>) -> Self {
+        Expression::Lambda(value)
+    }
+}
+
+impl From<Macro<Expression>> for Expression {
+    fn from(value: Macro<Expression>) -> Self {
+        Expression::Macro(value)
     }
 }
 

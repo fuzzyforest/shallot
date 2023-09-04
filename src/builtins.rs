@@ -1,7 +1,10 @@
-use crate::{Environment, Expression};
+use crate::{errors::TypeError, Environment, Expression, Lambda, Macro};
 use anyhow::{anyhow, bail, Context, Result};
 
-fn expressions_to_floats(expressions: &[Expression]) -> Result<Vec<f64>> {
+fn expressions_to_homogeneous<T>(expressions: &[Expression]) -> Result<Vec<T>>
+where
+    for<'a> T: TryFrom<&'a Expression, Error = TypeError>,
+{
     expressions
         .iter()
         .enumerate()
@@ -9,18 +12,18 @@ fn expressions_to_floats(expressions: &[Expression]) -> Result<Vec<f64>> {
             e.try_into()
                 .with_context(|| anyhow!("Argument number {}: {:?}", n + 1, e))
         })
-        .collect::<std::result::Result<Vec<f64>, _>>()
+        .collect::<std::result::Result<Vec<T>, _>>()
 }
 
 pub fn add(arguments: &[Expression], _env: &mut Environment<Expression>) -> Result<Expression> {
     let arguments =
-        expressions_to_floats(arguments).context("Arguments to add are not all numbers")?;
+        expressions_to_homogeneous(arguments).context("Arguments to add are not all numbers")?;
     Ok(Expression::Number(arguments.iter().sum()))
 }
 
 pub fn sub(arguments: &[Expression], _env: &mut Environment<Expression>) -> Result<Expression> {
     let arguments =
-        expressions_to_floats(arguments).context("Arguments to add are not all numbers")?;
+        expressions_to_homogeneous(arguments).context("Arguments to add are not all numbers")?;
     if let Some(first) = arguments.get(0) {
         Ok(Expression::Number(
             first - arguments[1..].iter().sum::<f64>(),
@@ -32,13 +35,13 @@ pub fn sub(arguments: &[Expression], _env: &mut Environment<Expression>) -> Resu
 
 pub fn mul(arguments: &[Expression], _env: &mut Environment<Expression>) -> Result<Expression> {
     let arguments =
-        expressions_to_floats(arguments).context("Arguments to mul are not all numbers")?;
+        expressions_to_homogeneous(arguments).context("Arguments to mul are not all numbers")?;
     Ok(Expression::Number(arguments.iter().product()))
 }
 
 pub fn div(arguments: &[Expression], _env: &mut Environment<Expression>) -> Result<Expression> {
     let arguments =
-        expressions_to_floats(arguments).context("Arguments to add are not all numbers")?;
+        expressions_to_homogeneous(arguments).context("Arguments to add are not all numbers")?;
     if let Some(first) = arguments.get(0) {
         Ok(Expression::Number(
             first / arguments[1..].iter().product::<f64>(),
@@ -85,4 +88,40 @@ pub fn quote(arguments: &[Expression], _env: &mut Environment<Expression>) -> Re
         bail!("Quote must be called on exactly one argument")
     }
     Ok(arguments[0].clone())
+}
+
+pub fn lambda(arguments: &[Expression], env: &mut Environment<Expression>) -> Result<Expression> {
+    if arguments.len() != 2 {
+        bail!("Lambdas must be constructed with exactly two arguments");
+    }
+    let Expression::List(parameters) = &arguments[0] else {
+        bail!("First argument to lambda construction must be a list")
+    };
+    let parameters =
+        expressions_to_homogeneous(parameters).context("Parameter names need to all be symbols")?;
+    let value = arguments[1].clone();
+    Ok(Lambda {
+        parameters,
+        value: Box::new(value),
+        env: env.clone(),
+    }
+    .into())
+}
+
+pub fn macr(arguments: &[Expression], env: &mut Environment<Expression>) -> Result<Expression> {
+    if arguments.len() != 2 {
+        bail!("Macros must be constructed with exactly two arguments");
+    }
+    let Expression::List(parameters) = &arguments[0] else {
+        bail!("First argument to macros construction must be a list")
+    };
+    let parameters =
+        expressions_to_homogeneous(parameters).context("Parameter names need to all be symbols")?;
+    let value = arguments[1].clone();
+    Ok(Macro {
+        parameters,
+        value: Box::new(value),
+        env: env.clone(),
+    }
+    .into())
 }

@@ -32,17 +32,76 @@ fn main() -> Result<()> {
     let mut environment: Environment<Expression> = Environment::default();
     // Default bindings
     environment.set(Symbol("pi".to_owned()), 3.1415);
-    environment.set(Symbol("+".to_owned()), BuiltinFunction(builtins::add));
-    environment.set(Symbol("*".to_owned()), BuiltinFunction(builtins::mul));
-    environment.set(Symbol("-".to_owned()), BuiltinFunction(builtins::sub));
-    environment.set(Symbol("/".to_owned()), BuiltinFunction(builtins::div));
-    environment.set(Symbol("list".to_owned()), BuiltinFunction(builtins::list));
-    environment.set(Symbol("=".to_owned()), BuiltinFunction(builtins::eq));
+    environment.set(
+        Symbol("+".to_owned()),
+        BuiltinFunction {
+            name: "+",
+            function: builtins::add,
+        },
+    );
+    environment.set(
+        Symbol("*".to_owned()),
+        BuiltinFunction {
+            name: "*",
+            function: builtins::mul,
+        },
+    );
+    environment.set(
+        Symbol("-".to_owned()),
+        BuiltinFunction {
+            name: "-",
+            function: builtins::sub,
+        },
+    );
+    environment.set(
+        Symbol("/".to_owned()),
+        BuiltinFunction {
+            name: "/",
+            function: builtins::div,
+        },
+    );
+    environment.set(
+        Symbol("list".to_owned()),
+        BuiltinFunction {
+            name: "list",
+            function: builtins::list,
+        },
+    );
+    environment.set(
+        Symbol("=".to_owned()),
+        BuiltinFunction {
+            name: "=",
+            function: builtins::eq,
+        },
+    );
     environment.set(
         Symbol("define".to_owned()),
-        BuiltinFunction(builtins::define),
+        BuiltinFunction {
+            name: "define",
+            function: builtins::define,
+        },
     );
-    environment.set(Symbol("'".to_owned()), BuiltinMacro(builtins::quote));
+    environment.set(
+        Symbol("'".to_owned()),
+        BuiltinMacro {
+            name: "'",
+            function: builtins::quote,
+        },
+    );
+    environment.set(
+        Symbol("λ".to_owned()),
+        BuiltinMacro {
+            name: "λ",
+            function: builtins::lambda,
+        },
+    );
+    environment.set(
+        Symbol("μ".to_owned()),
+        BuiltinMacro {
+            name: "μ",
+            function: builtins::macr,
+        },
+    );
 
     if let Some(path) = arguments.path {
         let input = match path.to_str() {
