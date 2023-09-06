@@ -15,6 +15,17 @@ where
         .collect::<std::result::Result<Vec<T>, _>>()
 }
 
+pub fn le(arguments: &[Expression], _env: &mut Environment<Expression>) -> Result<Expression> {
+    let arguments: Vec<f64> =
+        expressions_to_homogeneous(arguments).context("Arguments to add are not all numbers")?;
+    for i in 0..arguments.len() - 1 {
+        if !(arguments[i] <= arguments[i + 1]) {
+            return Ok(Expression::List(vec![]));
+        }
+    }
+    Ok(Expression::Number(1.))
+}
+
 pub fn add(arguments: &[Expression], _env: &mut Environment<Expression>) -> Result<Expression> {
     let arguments =
         expressions_to_homogeneous(arguments).context("Arguments to add are not all numbers")?;
@@ -124,4 +135,28 @@ pub fn macr(arguments: &[Expression], env: &mut Environment<Expression>) -> Resu
         env: env.clone(),
     }
     .into())
+}
+
+pub fn cond(arguments: &[Expression], env: &mut Environment<Expression>) -> Result<Expression> {
+    for i in 0..arguments.len() / 2 {
+        let condition_number = i + 1;
+        if arguments[2 * i]
+            .eval(env)
+            .with_context(|| anyhow!("Could not evalutate condition number {condition_number}"))?
+            .is_truthy()
+        {
+            return arguments[2 * i + 1].eval(env).with_context(|| {
+                anyhow!("Could not evaluate consequence number {condition_number}")
+            });
+        }
+    }
+    if arguments.len() % 2 == 0 {
+        Ok(Expression::List(vec![]))
+    } else {
+        arguments
+            .last()
+            .unwrap() // Length is odd
+            .eval(env)
+            .context("Could not evaluate default")
+    }
 }

@@ -27,11 +27,39 @@ fn get_arguments() -> Arguments {
     arguments
 }
 
+fn print(arguments: &[Expression], _env: &mut Environment<Expression>) -> Result<Expression> {
+    for argument in arguments {
+        println!("{argument}");
+    }
+    Ok(Expression::List(vec![]))
+}
+
 fn main() -> Result<()> {
     let arguments = get_arguments();
     let mut environment: Environment<Expression> = Environment::default();
     // Default bindings
     environment.set(Symbol("pi".to_owned()), 3.1415);
+    environment.set(
+        Symbol("≤".to_owned()),
+        BuiltinFunction {
+            name: "≤",
+            function: builtins::le,
+        },
+    );
+    environment.set(
+        Symbol("cond".to_owned()),
+        BuiltinMacro {
+            name: "cond",
+            function: builtins::cond,
+        },
+    );
+    environment.set(
+        Symbol("print".to_owned()),
+        BuiltinFunction {
+            name: "print",
+            function: print,
+        },
+    );
     environment.set(
         Symbol("+".to_owned()),
         BuiltinFunction {

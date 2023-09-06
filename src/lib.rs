@@ -1,8 +1,8 @@
 use anyhow::{anyhow, bail, Context, Result};
-pub use atoms::*;
 use std::{fmt::Display, iter::Peekable};
 
 mod atoms;
+pub use atoms::*;
 mod token;
 pub use token::tokenize;
 use token::*;
@@ -137,6 +137,10 @@ impl Expression {
         }
     }
 
+    fn is_truthy(&self) -> bool {
+        !matches!(self, Self::List(list) if list.is_empty())
+    }
+
     pub fn eval(&self, env: &mut Environment<Self>) -> Result<Self> {
         match self {
             Expression::List(list) => {
@@ -146,74 +150,10 @@ impl Expression {
                     .and_then(|e| e.eval(env))
                     .with_context(|| anyhow!("Could not evaluate head of list"))?;
                 match function {
-                    Expression::BuiltinFunction(func) => {
-                        let arguments: Vec<Expression> = list[1..]
-                            .iter()
-                            .enumerate()
-                            .map(|(n, e)| {
-                                e.eval(env)
-                                    .with_context(|| anyhow!("Argument number {}: {:?}", n + 1, e))
-                            })
-                            .collect::<Result<Vec<_>>>()
-                            .with_context(|| {
-                                anyhow!("Could not evaluate arguments to {:?}", func)
-                            })?;
-                        (func.function)(&arguments, env)
-                    }
-                    Expression::Lambda(lambda) => {
-                        let arguments: Vec<Expression> = list[1..]
-                            .iter()
-                            .enumerate()
-                            .map(|(n, e)| {
-                                e.eval(env)
-                                    .with_context(|| anyhow!("Argument number {}: {:?}", n + 1, e))
-                            })
-                            .collect::<Result<Vec<_>>>()
-                            .with_context(|| {
-                                anyhow!("Could not evaluate arguments to {:?}", lambda)
-                            })?;
-                        if arguments.len() > lambda.parameters.len() {
-                            bail!("Too many arguments to lambda")
-                        }
-                        let mut env: Environment<Self> = lambda.env.clone();
-                        for (parameter, argument) in lambda.parameters.iter().zip(&arguments) {
-                            env.set(parameter.clone(), argument.clone())
-                        }
-                        if arguments.len() < lambda.parameters.len() {
-                            Ok(Lambda {
-                                parameters: lambda.parameters[arguments.len()..].to_vec(),
-                                env,
-                                value: lambda.value,
-                            }
-                            .into())
-                        } else {
-                            lambda.value.eval(&mut env)
-                        }
-                    }
-                    Expression::BuiltinMacro(func) => (func.function)(&list[1..], env),
-                    Expression::Macro(macr) => {
-                        let arguments = &list[1..];
-                        if arguments.len() > macr.parameters.len() {
-                            bail!("Too many arguments to lambda")
-                        }
-                        let mut macro_env: Environment<Self> = macr.env.clone();
-                        for (parameter, argument) in macr.parameters.iter().zip(arguments) {
-                            macro_env.set(parameter.clone(), argument.clone())
-                        }
-                        if arguments.len() < macr.parameters.len() {
-                            Ok(Macro {
-                                parameters: macr.parameters[arguments.len()..].to_vec(),
-                                env: macro_env,
-                                value: macr.value,
-                            }
-                            .into())
-                        } else {
-                            macr.value
-                                .eval(&mut macro_env)
-                                .context("Could not expand macro")?
-                                .eval(env)
-                        }
-                    }
+                    Expression::BuiltinFunction(func) => func.call(&list[1..], env),
+                    Expression::Lambda(lambda) => lambda.call(&list[1..], env),
+                    Expression::BuiltinMacro(func) => func.call(&list[1..], env),
+                    Expression::Macro(macr) => macr.call(&list[1..], env),
                     _ => {
                         bail!("Cannot call {:?} as a function", function)
                     }
