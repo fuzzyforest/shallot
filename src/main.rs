@@ -31,14 +31,14 @@ fn print(arguments: &[Expression], _env: &mut Environment<Expression>) -> Result
     for argument in arguments {
         println!("{argument}");
     }
-    Ok(Expression::List(vec![]))
+    Ok(List(vec![]).into())
 }
 
 fn main() -> Result<()> {
     let arguments = get_arguments();
     let mut environment: Environment<Expression> = Environment::default();
     // Default bindings
-    environment.set(Symbol("pi".to_owned()), 3.1415);
+    environment.set(Symbol("pi".to_owned()), Expression::from(Number(3.1415)));
     environment.set(
         Symbol("≤".to_owned()),
         BuiltinFunction {

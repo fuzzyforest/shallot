@@ -1,9 +1,12 @@
-use crate::{errors::TypeError, Environment, Expression, Lambda, Macro};
+use crate::{
+    errors::TypeError, expression::LispExpression, Environment, Expression, Lambda, List, Macro,
+    Number, Symbol,
+};
 use anyhow::{anyhow, bail, Context, Result};
 
-fn expressions_to_homogeneous<T>(expressions: &[Expression]) -> Result<Vec<T>>
+fn expressions_to_homogeneous<'a, T>(expressions: &'a [Expression]) -> Result<Vec<T>>
 where
-    for<'a> T: TryFrom<&'a Expression, Error = TypeError>,
+    T: TryFrom<&'a Expression, Error = TypeError>,
 {
     expressions
         .iter()
@@ -16,47 +19,48 @@ where
 }
 
 pub fn le(arguments: &[Expression], _env: &mut Environment<Expression>) -> Result<Expression> {
-    let arguments: Vec<f64> =
+    let arguments: Vec<&Number> =
         expressions_to_homogeneous(arguments).context("Arguments to add are not all numbers")?;
+    let arguments: Vec<f64> = arguments.into_iter().map(|n| n.0).collect();
     for i in 0..arguments.len() - 1 {
         if !(arguments[i] <= arguments[i + 1]) {
-            return Ok(Expression::List(vec![]));
+            return Ok(List(vec![]).into());
         }
     }
-    Ok(Expression::Number(1.))
+    Ok(Number(1.).into())
 }
 
 pub fn add(arguments: &[Expression], _env: &mut Environment<Expression>) -> Result<Expression> {
-    let arguments =
+    let arguments: Vec<&Number> =
         expressions_to_homogeneous(arguments).context("Arguments to add are not all numbers")?;
-    Ok(Expression::Number(arguments.iter().sum()))
+    let arguments: Vec<f64> = arguments.into_iter().map(|n| n.0).collect();
+    Ok(Number(arguments.iter().sum()).into())
 }
 
 pub fn sub(arguments: &[Expression], _env: &mut Environment<Expression>) -> Result<Expression> {
-    let arguments =
+    let arguments: Vec<&Number> =
         expressions_to_homogeneous(arguments).context("Arguments to add are not all numbers")?;
+    let arguments: Vec<f64> = arguments.into_iter().map(|n| n.0).collect();
     if let Some(first) = arguments.get(0) {
-        Ok(Expression::Number(
-            first - arguments[1..].iter().sum::<f64>(),
-        ))
+        Ok(Number(first - arguments[1..].iter().sum::<f64>()).into())
     } else {
         bail!("Insufficient arguments to sub")
     }
 }
 
 pub fn mul(arguments: &[Expression], _env: &mut Environment<Expression>) -> Result<Expression> {
-    let arguments =
+    let arguments: Vec<&Number> =
         expressions_to_homogeneous(arguments).context("Arguments to mul are not all numbers")?;
-    Ok(Expression::Number(arguments.iter().product()))
+    let arguments: Vec<f64> = arguments.into_iter().map(|n| n.0).collect();
+    Ok(Number(arguments.iter().product()).into())
 }
 
 pub fn div(arguments: &[Expression], _env: &mut Environment<Expression>) -> Result<Expression> {
-    let arguments =
+    let arguments: Vec<&Number> =
         expressions_to_homogeneous(arguments).context("Arguments to add are not all numbers")?;
+    let arguments: Vec<f64> = arguments.into_iter().map(|n| n.0).collect();
     if let Some(first) = arguments.get(0) {
-        Ok(Expression::Number(
-            first / arguments[1..].iter().product::<f64>(),
-        ))
+        Ok(Number(first / arguments[1..].iter().product::<f64>()).into())
     } else {
         bail!("Insufficient arguments to div")
     }
@@ -67,18 +71,18 @@ pub fn eq(arguments: &[Expression], _env: &mut Environment<Expression>) -> Resul
         let mut last = first;
         for elt in arguments[1..].iter() {
             if elt != last {
-                return Ok(Expression::List(vec![]));
+                return Ok(List(vec![]).into());
             }
             last = elt;
         }
-        return Ok(Expression::Number(1.));
+        return Ok(Number(1.).into());
     } else {
-        return Ok(Expression::Number(1.));
+        return Ok(Number(1.).into());
     }
 }
 
 pub fn list(arguments: &[Expression], _env: &mut Environment<Expression>) -> Result<Expression> {
-    Ok(Expression::List(arguments.to_vec()))
+    Ok(List(arguments.to_vec()).into())
 }
 
 pub fn define(arguments: &[Expression], env: &mut Environment<Expression>) -> Result<Expression> {
@@ -108,11 +112,11 @@ pub fn lambda(arguments: &[Expression], env: &mut Environment<Expression>) -> Re
     let Expression::List(parameters) = &arguments[0] else {
         bail!("First argument to lambda construction must be a list")
     };
-    let parameters =
-        expressions_to_homogeneous(parameters).context("Parameter names need to all be symbols")?;
+    let parameters: Vec<&Symbol> = expressions_to_homogeneous(&parameters.0)
+        .context("Parameter names need to all be symbols")?;
     let value = arguments[1].clone();
     Ok(Lambda {
-        parameters,
+        parameters: parameters.into_iter().cloned().collect(),
         value: Box::new(value),
         env: env.clone(),
     }
@@ -126,11 +130,11 @@ pub fn macr(arguments: &[Expression], env: &mut Environment<Expression>) -> Resu
     let Expression::List(parameters) = &arguments[0] else {
         bail!("First argument to macros construction must be a list")
     };
-    let parameters =
-        expressions_to_homogeneous(parameters).context("Parameter names need to all be symbols")?;
+    let parameters: Vec<&Symbol> = expressions_to_homogeneous(&parameters.0)
+        .context("Parameter names need to all be symbols")?;
     let value = arguments[1].clone();
     Ok(Macro {
-        parameters,
+        parameters: parameters.into_iter().cloned().collect(),
         value: Box::new(value),
         env: env.clone(),
     }
@@ -151,7 +155,7 @@ pub fn cond(arguments: &[Expression], env: &mut Environment<Expression>) -> Resu
         }
     }
     if arguments.len() % 2 == 0 {
-        Ok(Expression::List(vec![]))
+        Ok(List(vec![]).into())
     } else {
         arguments
             .last()

@@ -10,7 +10,7 @@
   (define 'solve (λ (f self x)
     (cond (≤ (abs (f x)) ε)
       x
-      (self f (newton-improve f x))
+      (self (newton-improve f x))
     )
   ))
 
@@ -19,13 +19,5 @@
        (λ (x) (f (λ (y) ((x x) y))))
   ))
 
-  (define 'factorial (λ (factorial) (λ (x)
-    (cond (= 0 x)
-      1
-      (* x (factorial (- x 1)))
-    )
-  )))
-
-  (print ((Y factorial) 5))
   (print ((Y (solve target)) 1))
  )

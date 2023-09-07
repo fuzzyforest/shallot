@@ -3,14 +3,15 @@ use std::fmt::{Debug, Display};
 
 use crate::{Environment, Expression};
 
-pub trait Atom {
+pub trait Atom: Display {
+    // TODO variant name
+
     fn call(
         &self,
         _arguments: &[Expression],
         _env: &mut Environment<Expression>,
     ) -> Result<Expression> {
-        // TODO Make this print out the self
-        bail!("Cannot call ??? as if it were a function")
+        bail!("Cannot call {} as if it were a function", "???")
     }
 }
 
@@ -33,7 +34,11 @@ impl Display for Symbol {
     }
 }
 
-impl Atom for Symbol {}
+impl Atom for Symbol {
+    //fn name() {
+    //    "symbol"
+    //}
+}
 
 #[derive(Clone, PartialEq)]
 pub struct BuiltinFunction<E> {
@@ -42,6 +47,10 @@ pub struct BuiltinFunction<E> {
 }
 
 impl Atom for BuiltinFunction<Expression> {
+    //fn name() {
+    //    "builtin function"
+    //}
+
     fn call(
         &self,
         arguments: &[Expression],
@@ -79,6 +88,9 @@ pub struct BuiltinMacro<E> {
 }
 
 impl Atom for BuiltinMacro<Expression> {
+    //fn name() {
+    //    "builtin macro"
+    //}
     fn call(
         &self,
         arguments: &[Expression],
@@ -108,6 +120,9 @@ pub struct Lambda<E> {
 }
 
 impl Atom for Lambda<Expression> {
+    //fn name() {
+    //    "lambda"
+    //}
     fn call(
         &self,
         arguments: &[Expression],
@@ -163,6 +178,10 @@ pub struct Macro<E> {
 }
 
 impl Atom for Macro<Expression> {
+    //fn name() {
+    //    "macro"
+    //}
+
     fn call(
         &self,
         arguments: &[Expression],
@@ -201,5 +220,44 @@ impl<E: Display> Display for Macro<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let parameters: Vec<String> = self.parameters.iter().map(|e| e.to_string()).collect();
         write!(f, "μ ({}) {}", parameters.join(" "), self.value)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
+pub struct Number(pub f64);
+
+impl Display for Number {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "\x1b[0;36m{}\x1b[0m", self.0)
+    }
+}
+
+impl Atom for Number {
+    //fn name() {
+    //    "number"
+    //}
+}
+
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
+pub struct List<E>(pub Vec<E>);
+
+impl<E: Display> Display for List<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let elements: Vec<String> = self.0.iter().map(|e| e.to_string()).collect();
+        write!(f, "({})", elements.join(" "))
+    }
+}
+
+impl<E: Display> Atom for List<E> {
+    //fn name() {
+    //    "list"
+    //}
+
+    fn call(
+        &self,
+        _arguments: &[Expression],
+        _env: &mut Environment<Expression>,
+    ) -> Result<Expression> {
+        bail!("Calling lists is not yet implemented!")
     }
 }
