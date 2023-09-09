@@ -1,21 +1,21 @@
 use crate::{
-    errors::TypeError, expression::LispExpression, Environment, Expression, Lambda, List, Macro,
-    Number, Symbol,
+    expression::{LispExpression, ToAndFrom},
+    Environment, Expression, Lambda, List, Macro, Number, Symbol,
 };
 use anyhow::{anyhow, bail, Context, Result};
 
-fn expressions_to_homogeneous<'a, T>(expressions: &'a [Expression]) -> Result<Vec<T>>
+fn expressions_to_homogeneous<'a, E, T>(expressions: &'a [E]) -> Result<Vec<&T>>
 where
-    T: TryFrom<&'a Expression, Error = TypeError>,
+    E: LispExpression + ToAndFrom<T>,
 {
     expressions
         .iter()
         .enumerate()
         .map(|(n, e)| {
-            e.try_into()
-                .with_context(|| anyhow!("Argument number {}: {:?}", n + 1, e))
+            e.try_into_atom()
+                .with_context(|| anyhow!("Argument number {}: {}", n + 1, e))
         })
-        .collect::<std::result::Result<Vec<T>, _>>()
+        .collect()
 }
 
 pub fn le(arguments: &[Expression], _env: &mut Environment<Expression>) -> Result<Expression> {

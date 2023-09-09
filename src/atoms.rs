@@ -1,17 +1,25 @@
 use anyhow::{anyhow, bail, Context, Result};
 use std::fmt::{Debug, Display};
 
-use crate::{Environment, Expression};
+use crate::{expression::ToAndFrom, token::Token, Environment, LispExpression};
 
-pub trait Atom: Display {
-    // TODO variant name
+pub trait Atom<E: LispExpression>: Display {
+    // TODO find a better way to do this
+    fn sized_name() -> &'static str
+    where
+        Self: Sized;
 
-    fn call(
-        &self,
-        _arguments: &[Expression],
-        _env: &mut Environment<Expression>,
-    ) -> Result<Expression> {
-        bail!("Cannot call {} as if it were a function", "???")
+    fn name(&self) -> &'static str;
+
+    fn call(&self, _arguments: &[E], _env: &mut Environment<E>) -> Result<E> {
+        bail!("Cannot call {} as if it were a function", self.name())
+    }
+
+    fn parse_from_token(_token: &Token) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        None
     }
 }
 
@@ -34,10 +42,20 @@ impl Display for Symbol {
     }
 }
 
-impl Atom for Symbol {
-    //fn name() {
-    //    "symbol"
-    //}
+impl<E: LispExpression> Atom<E> for Symbol {
+    fn sized_name() -> &'static str {
+        "symbol"
+    }
+    fn name(&self) -> &'static str {
+        "symbol"
+    }
+
+    fn parse_from_token(token: &Token) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        Some(Self(token.value.clone()))
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -46,17 +64,16 @@ pub struct BuiltinFunction<E> {
     pub function: fn(&[E], &mut Environment<E>) -> Result<E>,
 }
 
-impl Atom for BuiltinFunction<Expression> {
-    //fn name() {
-    //    "builtin function"
-    //}
+impl<E: LispExpression> Atom<E> for BuiltinFunction<E> {
+    fn sized_name() -> &'static str {
+        "builtin function"
+    }
+    fn name(&self) -> &'static str {
+        "builtin function"
+    }
 
-    fn call(
-        &self,
-        arguments: &[Expression],
-        env: &mut Environment<Expression>,
-    ) -> Result<Expression> {
-        let arguments: Vec<Expression> = arguments
+    fn call(&self, arguments: &[E], env: &mut Environment<E>) -> Result<E> {
+        let arguments: Vec<E> = arguments
             .iter()
             .enumerate()
             .map(|(n, e)| {
@@ -87,15 +104,16 @@ pub struct BuiltinMacro<E> {
     pub function: fn(&[E], &mut Environment<E>) -> Result<E>,
 }
 
-impl Atom for BuiltinMacro<Expression> {
-    //fn name() {
-    //    "builtin macro"
-    //}
-    fn call(
-        &self,
-        arguments: &[Expression],
-        env: &mut Environment<Expression>,
-    ) -> Result<Expression> {
+impl<E: LispExpression> Atom<E> for BuiltinMacro<E> {
+    fn sized_name() -> &'static str {
+        "builtin macro"
+    }
+
+    fn name(&self) -> &'static str {
+        "builtin macro"
+    }
+
+    fn call(&self, arguments: &[E], env: &mut Environment<E>) -> Result<E> {
         (self.function)(arguments, env)
     }
 }
@@ -119,28 +137,29 @@ pub struct Lambda<E> {
     pub env: Environment<E>,
 }
 
-impl Atom for Lambda<Expression> {
-    //fn name() {
-    //    "lambda"
-    //}
-    fn call(
-        &self,
-        arguments: &[Expression],
-        env: &mut Environment<Expression>,
-    ) -> Result<Expression> {
-        let arguments: Vec<Expression> = arguments
+impl<E: LispExpression> Atom<E> for Lambda<E> {
+    fn sized_name() -> &'static str {
+        "lambda"
+    }
+
+    fn name(&self) -> &'static str {
+        "lambda"
+    }
+
+    fn call(&self, arguments: &[E], env: &mut Environment<E>) -> Result<E> {
+        let arguments: Vec<E> = arguments
             .iter()
             .enumerate()
             .map(|(n, e)| {
                 e.eval(env)
-                    .with_context(|| anyhow!("Argument number {}: {:?}", n + 1, e))
+                    .with_context(|| anyhow!("Argument number {}: {}", n + 1, e))
             })
             .collect::<Result<Vec<_>>>()
-            .with_context(|| anyhow!("Could not evaluate arguments to {:?}", self))?;
+            .with_context(|| anyhow!("Could not evaluate arguments to {}", self))?;
         if arguments.len() > self.parameters.len() {
             bail!("Too many arguments to lambda")
         }
-        let mut env: Environment<Expression> = self.env.clone();
+        let mut env: Environment<E> = self.env.clone();
         for (parameter, argument) in self.parameters.iter().zip(&arguments) {
             env.set(parameter.clone(), argument.clone())
         }
@@ -177,20 +196,20 @@ pub struct Macro<E> {
     pub env: Environment<E>,
 }
 
-impl Atom for Macro<Expression> {
-    //fn name() {
-    //    "macro"
-    //}
+impl<E: LispExpression> Atom<E> for Macro<E> {
+    fn sized_name() -> &'static str {
+        "macro"
+    }
 
-    fn call(
-        &self,
-        arguments: &[Expression],
-        env: &mut Environment<Expression>,
-    ) -> Result<Expression> {
+    fn name(&self) -> &'static str {
+        "macro"
+    }
+
+    fn call(&self, arguments: &[E], env: &mut Environment<E>) -> Result<E> {
         if arguments.len() > self.parameters.len() {
             bail!("Too many arguments to lambda")
         }
-        let mut macro_env: Environment<Expression> = self.env.clone();
+        let mut macro_env: Environment<E> = self.env.clone();
         for (parameter, argument) in self.parameters.iter().zip(arguments) {
             macro_env.set(parameter.clone(), argument.clone())
         }
@@ -232,10 +251,21 @@ impl Display for Number {
     }
 }
 
-impl Atom for Number {
-    //fn name() {
-    //    "number"
-    //}
+impl<E: LispExpression> Atom<E> for Number {
+    fn sized_name() -> &'static str {
+        "number"
+    }
+
+    fn name(&self) -> &'static str {
+        "number"
+    }
+
+    fn parse_from_token(token: &Token) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        token.value.parse().ok().map(Self)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
@@ -248,16 +278,35 @@ impl<E: Display> Display for List<E> {
     }
 }
 
-impl<E: Display> Atom for List<E> {
-    //fn name() {
-    //    "list"
-    //}
+impl<E: LispExpression> Atom<E> for List<E> {
+    fn sized_name() -> &'static str {
+        "list"
+    }
 
-    fn call(
-        &self,
-        _arguments: &[Expression],
-        _env: &mut Environment<Expression>,
-    ) -> Result<Expression> {
-        bail!("Calling lists is not yet implemented!")
+    fn name(&self) -> &'static str {
+        "list"
+    }
+
+    fn call(&self, arguments: &[E], _env: &mut Environment<E>) -> Result<E> {
+        if arguments.len() > 1 {
+            // TODO should this be the case?
+            bail!("Cannot index array using more than one index")
+        }
+        if let Ok(number) = <E as ToAndFrom<Number>>::try_into_atom(&arguments[0]) {
+            if number.0 < 0. || number.0 > self.0.len() as f64 - 1.0 {
+                bail!(
+                    "Cannot index array of length {} at {}",
+                    self.0.len(),
+                    number
+                );
+            }
+            let index: usize = number.0 as usize;
+            Ok(self.0[index].clone())
+        } else {
+            bail!(
+                "Can only index into list using numbers, not {}",
+                arguments[0]
+            )
+        }
     }
 }

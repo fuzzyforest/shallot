@@ -9,7 +9,7 @@ mod environment;
 mod errors;
 pub use environment::*;
 mod expression;
-pub use expression::Expression;
+pub use expression::{Expression, LispExpression};
 
 // TODO Symbol interning?
 
