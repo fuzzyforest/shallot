@@ -3,20 +3,25 @@ use anyhow::{anyhow, bail, Context, Result};
 mod atoms;
 pub use atoms::*;
 mod token;
-pub use token::tokenize;
+pub use token::{tokenize, Token};
 pub mod builtins;
+pub use builtins::set_environment;
 mod environment;
 mod errors;
 pub use environment::*;
+pub use errors::TypeError;
 mod expression;
-pub use expression::{Expression, LispExpression};
+pub use expression::{Expression, LispExpression, ToAndFrom};
+
+mod repl;
+pub use repl::run_repl;
 
 // TODO Symbol interning?
 
-pub fn evaluate(input: &str, env: &mut Environment<Expression>) -> Result<Expression> {
+pub fn evaluate<E: LispExpression>(input: &str, env: &mut Environment<E>) -> Result<E> {
     let mut tokens = tokenize(&input).peekable();
-    let expression = Expression::parse(&mut tokens)
-        .with_context(|| anyhow!("Could not parse input {}", input))?;
+    let expression =
+        E::parse(&mut tokens).with_context(|| anyhow!("Could not parse input {}", input))?;
     if tokens.peek().is_some() {
         bail!("Extra tokens in line")
     }

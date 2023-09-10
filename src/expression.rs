@@ -8,12 +8,32 @@ pub trait ToAndFrom<T>: From<T> {
 }
 
 pub trait LispExpression:
-    // TODO Can we implement display ourselves?
-    Sized + Clone + PartialEq + Display + ToAndFrom<List<Self>> + ToAndFrom<Symbol> + ToAndFrom<Lambda<Self>> + ToAndFrom<Macro<Self>> + ToAndFrom<Number>
+    Sized
+    + Clone
+    + PartialEq
+// TODO Can we implement display ourselves?
+    + Display
+    + ToAndFrom<List<Self>>
+    + ToAndFrom<Symbol>
+    + ToAndFrom<Lambda<Self>>
+    + ToAndFrom<Macro<Self>>
+    + ToAndFrom<BuiltinFunction<Self>>
+    + ToAndFrom<BuiltinMacro<Self>>
+    + ToAndFrom<Number>
 {
     fn as_atom(&self) -> &dyn Atom<Self>;
 
-    fn as_list(&self) -> std::result::Result<&List<Self>, TypeError>;
+    fn null() -> Self {
+        List(vec![]).into()
+    }
+
+    fn as_list(&self) -> std::result::Result<&List<Self>, TypeError> {
+        self.try_into_atom()
+    }
+
+    fn as_symbol(&self) -> std::result::Result<&Symbol, TypeError> {
+        self.try_into_atom()
+    }
 
     fn is_truthy(&self) -> bool {
         self.as_list().map(|l| l.0.is_empty()).unwrap_or(false)
@@ -63,7 +83,7 @@ pub trait LispExpression:
     }
 
     fn eval(&self, env: &mut Environment<Self>) -> Result<Self> {
-        if let Ok(list) = <Self as ToAndFrom<List<_>>>::try_into_atom(self) {
+        if let Ok(list) = self.as_list() {
             let function: Self = list
                 .0
                 .get(0)
@@ -71,7 +91,7 @@ pub trait LispExpression:
                 .and_then(|e| e.eval(env))
                 .with_context(|| anyhow!("Could not evaluate head of list"))?;
             function.as_atom().call(&list.0[1..], env)
-        } else if let Ok(symbol) = <Self as ToAndFrom<Symbol>>::try_into_atom(self) {
+        } else if let Ok(symbol) = self.as_symbol() {
             env.get(symbol)
                 .cloned()
                 .ok_or_else(|| anyhow!("Variable `{}` unbound", symbol))
@@ -81,16 +101,28 @@ pub trait LispExpression:
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Expression {
-    Symbol(Symbol),
-    Number(Number),
-    List(List<Expression>),
-    BuiltinFunction(BuiltinFunction<Expression>),
-    BuiltinMacro(BuiltinMacro<Expression>),
-    Lambda(Lambda<Expression>),
-    Macro(Macro<Expression>),
+#[macro_export]
+macro_rules! create_expression {
+    ($expression_name:ident, $($atom:tt$(<$g:tt>)?),+) => {
+        #[derive(Clone, Debug, PartialEq)]
+        pub enum $expression_name {
+          $(
+          $atom($atom$(<$g>)?)
+          ),+
+        }
+    };
 }
+
+create_expression!(
+    Expression,
+    Symbol,
+    Number,
+    Lambda<Expression>,
+    Macro<Expression>,
+    BuiltinFunction<Expression>,
+    BuiltinMacro<Expression>,
+    List<Expression>
+);
 
 impl LispExpression for Expression {
     fn as_atom(&self) -> &dyn Atom<Self> {
@@ -103,13 +135,6 @@ impl LispExpression for Expression {
             Expression::Lambda(a) => a,
             Expression::Macro(a) => a,
         }
-    }
-
-    fn as_list(&self) -> std::result::Result<&List<Self>, TypeError>
-    where
-        Self: Sized,
-    {
-        self.try_into_atom()
     }
 
     fn parse_from_token(token: &Token) -> Self {
@@ -126,6 +151,7 @@ impl Display for Expression {
     }
 }
 
+#[macro_export]
 macro_rules! impl_try_to_from {
     ($type:tt, $atom:tt$(<$g:tt>)?) => {
         impl From<$atom$(<$g>)?> for $type {

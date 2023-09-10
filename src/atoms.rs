@@ -64,6 +64,12 @@ pub struct BuiltinFunction<E> {
     pub function: fn(&[E], &mut Environment<E>) -> Result<E>,
 }
 
+impl<E> BuiltinFunction<E> {
+    pub fn new(name: &'static str, function: fn(&[E], &mut Environment<E>) -> Result<E>) -> Self {
+        Self { name, function }
+    }
+}
+
 impl<E: LispExpression> Atom<E> for BuiltinFunction<E> {
     fn sized_name() -> &'static str {
         "builtin function"
@@ -102,6 +108,12 @@ impl<E> Display for BuiltinFunction<E> {
 pub struct BuiltinMacro<E> {
     pub name: &'static str,
     pub function: fn(&[E], &mut Environment<E>) -> Result<E>,
+}
+
+impl<E> BuiltinMacro<E> {
+    pub fn new(name: &'static str, function: fn(&[E], &mut Environment<E>) -> Result<E>) -> Self {
+        Self { name, function }
+    }
 }
 
 impl<E: LispExpression> Atom<E> for BuiltinMacro<E> {
