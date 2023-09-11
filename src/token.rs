@@ -99,7 +99,7 @@ impl<'a> Iterator for TokenIterator<'a> {
     }
 }
 
-pub fn tokenize<'a>(input: &'a str) -> TokenIterator {
+pub fn tokenize(input: &str) -> TokenIterator {
     TokenIterator {
         input: input.chars().enumerate().peekable(),
     }

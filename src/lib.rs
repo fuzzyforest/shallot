@@ -19,7 +19,7 @@ pub use repl::run_repl;
 // TODO Symbol interning?
 
 pub fn evaluate<E: LispExpression>(input: &str, env: &mut Environment<E>) -> Result<E> {
-    let mut tokens = tokenize(&input).peekable();
+    let mut tokens = tokenize(input).peekable();
     let expression =
         E::parse(&mut tokens).with_context(|| anyhow!("Could not parse input {}", input))?;
     if tokens.peek().is_some() {

@@ -8,10 +8,10 @@ pub trait ToAndFrom<T>: From<T> {
 }
 
 pub trait LispExpression:
-    Sized
+    'static
+    + Sized
     + Clone
     + PartialEq
-// TODO Can we implement display ourselves?
     + Display
     + ToAndFrom<List<Self>>
     + ToAndFrom<Symbol>
@@ -106,64 +106,47 @@ macro_rules! create_expression {
     ($expression_name:ident, $($atom:tt$(<$g:tt>)?),+) => {
         #[derive(Clone, Debug, PartialEq)]
         pub enum $expression_name {
-          $(
-          $atom($atom$(<$g>)?)
-          ),+
+            $(
+            $atom($atom$(<$g>)?)
+            ),+
         }
-    };
-}
 
-create_expression!(
-    Expression,
-    Symbol,
-    Number,
-    Lambda<Expression>,
-    Macro<Expression>,
-    BuiltinFunction<Expression>,
-    BuiltinMacro<Expression>,
-    List<Expression>
-);
-
-impl LispExpression for Expression {
-    fn as_atom(&self) -> &dyn Atom<Self> {
-        match self {
-            Expression::Symbol(a) => a,
-            Expression::Number(a) => a,
-            Expression::List(a) => a,
-            Expression::BuiltinFunction(a) => a,
-            Expression::BuiltinMacro(a) => a,
-            Expression::Lambda(a) => a,
-            Expression::Macro(a) => a,
-        }
-    }
-
-    fn parse_from_token(token: &Token) -> Self {
-        None.or_else(|| <Number as Atom<Self>>::parse_from_token(token).map(Self::from))
-            .or_else(|| <Symbol as Atom<Self>>::parse_from_token(token).map(Self::from))
-            // This will never fail as symbols never fail parsing
-            .unwrap()
-    }
-}
-
-impl Display for Expression {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.as_atom().fmt(f)
-    }
-}
-
-#[macro_export]
-macro_rules! impl_try_to_from {
-    ($type:tt, $atom:tt$(<$g:tt>)?) => {
-        impl From<$atom$(<$g>)?> for $type {
-            fn from(value: $atom$(<$g>)?) -> Self {
-                $type::$atom(value)
+        impl std::fmt::Display for $expression_name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                self.as_atom().fmt(f)
             }
         }
 
-        impl ToAndFrom<$atom$(<$g>)?> for $type {
+        impl LispExpression for $expression_name {
+            fn as_atom(&self) -> &dyn Atom<Self> {
+                match self {
+                    $(
+                    $expression_name::$atom(a) => a,
+                    )*
+                }
+            }
+
+            fn parse_from_token(token: &Token) -> Self {
+                None
+                    $(
+                    .or_else(|| <$atom$(<$g>)? as Atom<Self>>::parse_from_token(token).map(Self::from))
+                    )*
+                    // This will never fail as symbols never fail parsing
+                    .unwrap()
+            }
+        }
+
+        $(
+        impl From<$atom$(<$g>)?> for $expression_name {
+            fn from(value: $atom$(<$g>)?) -> Self {
+                $expression_name::$atom(value)
+            }
+        }
+
+        impl ToAndFrom<$atom$(<$g>)?> for $expression_name {
             fn try_into_atom(&self) -> std::result::Result<&$atom$(<$g>)?, TypeError> {
                 match self {
-                    $type::$atom(inner) => Ok(inner),
+                    $expression_name::$atom(inner) => Ok(inner),
                     _ => Err(TypeError {
                         expected: <$atom$(<$g>)? as Atom<Self>>::sized_name(),
                         got: self.variant(),
@@ -172,15 +155,11 @@ macro_rules! impl_try_to_from {
             }
 
         }
-    };
-    ($type:tt, $($atom:tt$(<$g:tt>)?),+) => {
-      $(
-         impl_try_to_from!($type, $atom$(<$g>)?);
-       )+
+        )?
     };
 }
 
-impl_try_to_from!(
+create_expression!(
     Expression,
     Symbol,
     Number,

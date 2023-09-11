@@ -1,10 +1,10 @@
 use crate::{
     expression::{LispExpression, ToAndFrom},
-    BuiltinFunction, BuiltinMacro, Environment, Expression, Lambda, List, Macro, Number, Symbol,
+    BuiltinFunction, BuiltinMacro, Environment, Lambda, List, Macro, Number, Symbol,
 };
 use anyhow::{anyhow, bail, Context, Result};
 
-fn expressions_to_homogeneous<'a, E, T>(expressions: &'a [E]) -> Result<Vec<&T>>
+fn expressions_to_homogeneous<E, T>(expressions: &[E]) -> Result<Vec<&T>>
 where
     E: LispExpression + ToAndFrom<T>,
 {
@@ -26,8 +26,8 @@ where
         expressions_to_homogeneous(arguments).context("Arguments to add are not all numbers")?;
     let arguments: Vec<f64> = arguments.into_iter().map(|n| n.0).collect();
     for i in 0..arguments.len() - 1 {
-        if !(arguments[i] <= arguments[i + 1]) {
-            return Ok(List(vec![]).into());
+        if arguments[i] > arguments[i + 1] {
+            return Ok(E::null());
         }
     }
     Ok(Number(1.).into())
@@ -50,7 +50,7 @@ where
     let arguments: Vec<&Number> =
         expressions_to_homogeneous(arguments).context("Arguments to add are not all numbers")?;
     let arguments: Vec<f64> = arguments.into_iter().map(|n| n.0).collect();
-    if let Some(first) = arguments.get(0) {
+    if let Some(first) = arguments.first() {
         Ok(Number(first - arguments[1..].iter().sum::<f64>()).into())
     } else {
         bail!("Insufficient arguments to sub")
@@ -74,7 +74,7 @@ where
     let arguments: Vec<&Number> =
         expressions_to_homogeneous(arguments).context("Arguments to add are not all numbers")?;
     let arguments: Vec<f64> = arguments.into_iter().map(|n| n.0).collect();
-    if let Some(first) = arguments.get(0) {
+    if let Some(first) = arguments.first() {
         Ok(Number(first / arguments[1..].iter().product::<f64>()).into())
     } else {
         bail!("Insufficient arguments to div")
@@ -85,7 +85,7 @@ pub fn eq<E>(arguments: &[E], _env: &mut Environment<E>) -> Result<E>
 where
     E: LispExpression,
 {
-    if let Some(first) = arguments.get(0) {
+    if let Some(first) = arguments.first() {
         let mut last = first;
         for elt in arguments[1..].iter() {
             if elt != last {
@@ -93,9 +93,9 @@ where
             }
             last = elt;
         }
-        return Ok(Number(1.).into());
+        Ok(Number(1.).into())
     } else {
-        return Ok(Number(1.).into());
+        Ok(Number(1.).into())
     }
 }
 
@@ -201,22 +201,16 @@ where
 }
 
 pub fn set_environment<E: LispExpression + ToAndFrom<Number>>(env: &mut Environment<E>) {
-    env.set(Symbol("≤".to_owned()), BuiltinFunction::new("≤", le::<E>));
-    env.set(Symbol("cond".to_owned()), BuiltinMacro::new("cond", cond));
-    env.set(Symbol("+".to_owned()), BuiltinFunction::new("+", add));
-    env.set(Symbol("*".to_owned()), BuiltinFunction::new("*", mul));
-    env.set(Symbol("-".to_owned()), BuiltinFunction::new("-", sub));
-    env.set(Symbol("/".to_owned()), BuiltinFunction::new("/", div));
-    env.set(
-        Symbol("list".to_owned()),
-        BuiltinFunction::new("list", list),
-    );
-    env.set(Symbol("=".to_owned()), BuiltinFunction::new("=", eq));
-    env.set(
-        Symbol("define".to_owned()),
-        BuiltinFunction::new("define", define),
-    );
-    env.set(Symbol("'".to_owned()), BuiltinMacro::new("'", quote));
-    env.set(Symbol("λ".to_owned()), BuiltinMacro::new("λ", lambda));
-    env.set(Symbol("μ".to_owned()), BuiltinMacro::new("μ", macr));
+    env.set("≤", BuiltinFunction::new("≤", le));
+    env.set("cond", BuiltinMacro::new("cond", cond));
+    env.set("+", BuiltinFunction::new("+", add));
+    env.set("*", BuiltinFunction::new("*", mul));
+    env.set("-", BuiltinFunction::new("-", sub));
+    env.set("/", BuiltinFunction::new("/", div));
+    env.set("list", BuiltinFunction::new("list", list));
+    env.set("=", BuiltinFunction::new("=", eq));
+    env.set("define", BuiltinFunction::new("define", define));
+    env.set("'", BuiltinMacro::new("'", quote));
+    env.set("λ", BuiltinMacro::new("λ", lambda));
+    env.set("μ", BuiltinMacro::new("μ", macr));
 }

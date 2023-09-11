@@ -1,5 +1,8 @@
 use anyhow::{anyhow, bail, Context, Result};
-use std::fmt::{Debug, Display};
+use std::{
+    fmt::{Debug, Display},
+    rc::Rc,
+};
 
 use crate::{expression::ToAndFrom, token::Token, Environment, LispExpression};
 
@@ -58,15 +61,53 @@ impl<E: LispExpression> Atom<E> for Symbol {
     }
 }
 
-#[derive(Clone, PartialEq)]
-pub struct BuiltinFunction<E> {
+impl From<&str> for Symbol {
+    fn from(value: &str) -> Self {
+        Symbol(value.to_owned())
+    }
+}
+
+#[derive(Clone)]
+pub struct BuiltinFunction<E: 'static> {
     pub name: &'static str,
-    pub function: fn(&[E], &mut Environment<E>) -> Result<E>,
+    pub function: Rc<dyn Fn(&[E], &mut Environment<E>) -> Result<E>>,
 }
 
 impl<E> BuiltinFunction<E> {
     pub fn new(name: &'static str, function: fn(&[E], &mut Environment<E>) -> Result<E>) -> Self {
-        Self { name, function }
+        Self {
+            name,
+            function: Rc::new(function),
+        }
+    }
+
+    // TODO What about other function signatures
+    pub fn new_wrapped<U: 'static, V: 'static>(
+        name: &'static str,
+        function: fn(&U) -> Result<V>,
+    ) -> Self
+    where
+        E: ToAndFrom<U> + ToAndFrom<V>,
+    {
+        let wrapped = move |arguments: &[E], _env: &mut Environment<E>| {
+            if arguments.len() != 1 {
+                bail!("Function {} must be called with a single argument", name)
+            }
+            let argument: &U = arguments[0]
+                .try_into_atom()
+                .with_context(|| anyhow!("Argument to {} is wrong type", name))?;
+            function(argument).map(|v| v.into())
+        };
+        Self {
+            name,
+            function: Rc::new(wrapped),
+        }
+    }
+}
+
+impl<E: 'static> PartialEq for BuiltinFunction<E> {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
     }
 }
 

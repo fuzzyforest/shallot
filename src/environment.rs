@@ -4,7 +4,7 @@ use crate::atoms::Symbol;
 
 #[derive(Clone, PartialEq)]
 pub struct Environment<E> {
-    inner: HashMap<Symbol, E>,
+    pub inner: HashMap<Symbol, E>,
 }
 
 impl<E> Default for Environment<E> {
@@ -20,8 +20,8 @@ impl<E> Environment<E> {
         self.inner.get(symbol)
     }
 
-    pub fn set(&mut self, symbol: Symbol, value: impl Into<E>) {
-        self.inner.insert(symbol, value.into());
+    pub fn set(&mut self, symbol: impl Into<Symbol>, value: impl Into<E>) {
+        self.inner.insert(symbol.into(), value.into());
     }
 }
 
@@ -33,7 +33,7 @@ impl<E: Display> Display for Environment<E> {
         let mut first = true;
         for symbol in &all_variables {
             if !first {
-                writeln!(f, "")?;
+                writeln!(f)?;
             }
             first = false;
             // Note: these values exist in our map for sure
