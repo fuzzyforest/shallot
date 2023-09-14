@@ -1,3 +1,4 @@
+#![feature(macro_metavar_expr)]
 use anyhow::{anyhow, bail, Context, Result};
 
 mod atoms;
@@ -15,6 +16,7 @@ pub use expression::{Expression, LispExpression, ToAndFrom};
 
 mod repl;
 pub use repl::run_repl;
+mod layer;
 
 // TODO Symbol interning?
 
