@@ -111,6 +111,7 @@ macro_rules! create_expression {
             ),+
         }
 
+
         impl std::fmt::Display for $expression_name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 self.as_atom().fmt(f)

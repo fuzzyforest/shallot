@@ -2,7 +2,7 @@ use crate::{
     expression::{LispExpression, ToAndFrom},
     BuiltinFunction, BuiltinMacro, Environment, Lambda, List, Macro, Number, Symbol,
 };
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, ensure, Context, Result};
 
 fn expressions_to_homogeneous<E, T>(expressions: &[E]) -> Result<Vec<&T>>
 where
@@ -110,9 +110,7 @@ pub fn define<E>(arguments: &[E], env: &mut Environment<E>) -> Result<E>
 where
     E: LispExpression,
 {
-    if arguments.len() != 2 {
-        bail!("Define requires two arguments")
-    }
+    ensure!(arguments.len() == 2, "Define requires two arguments");
     let symbol: &Symbol = arguments[0]
         .try_into_atom()
         .context("First argument to define should be a symbol")?;
@@ -125,9 +123,10 @@ pub fn quote<E>(arguments: &[E], _env: &mut Environment<E>) -> Result<E>
 where
     E: LispExpression,
 {
-    if arguments.len() != 1 {
-        bail!("Quote must be called on exactly one argument")
-    }
+    ensure!(
+        arguments.len() == 1,
+        "Quote must be called on exactly one argument"
+    );
     Ok(arguments[0].clone())
 }
 
@@ -135,9 +134,10 @@ pub fn lambda<E>(arguments: &[E], env: &mut Environment<E>) -> Result<E>
 where
     E: LispExpression,
 {
-    if arguments.len() != 2 {
-        bail!("Lambdas must be constructed with exactly two arguments");
-    }
+    ensure!(
+        arguments.len() == 2,
+        "Lambdas must be constructed with exactly two arguments"
+    );
     let parameters: &List<_> = arguments[0]
         .try_into_atom()
         .context("First argument to lambda construction must be a list")?;
@@ -156,9 +156,10 @@ pub fn macr<E>(arguments: &[E], env: &mut Environment<E>) -> Result<E>
 where
     E: LispExpression,
 {
-    if arguments.len() != 2 {
-        bail!("Macros must be constructed with exactly two arguments");
-    }
+    ensure!(
+        arguments.len() == 2,
+        "Macros must be constructed with exactly two arguments"
+    );
     let parameters: &List<_> = arguments[0]
         .try_into_atom()
         .context("First argument to macros construction must be a list")?;

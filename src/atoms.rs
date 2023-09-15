@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, ensure, Context, Result};
 use std::{
     fmt::{Debug, Display},
     rc::Rc,
@@ -90,9 +90,12 @@ impl<E> BuiltinFunction<E> {
         E: ToAndFrom<U> + ToAndFrom<V>,
     {
         let wrapped = move |arguments: &[E], _env: &mut Environment<E>| {
-            if arguments.len() != 1 {
-                bail!("Function {} must be called with a single argument", name)
-            }
+            ensure!(
+                arguments.len() == 1,
+                "Function {} must be called with a single argument",
+                name
+            );
+
             let argument: &U = arguments[0]
                 .try_into_atom()
                 .with_context(|| anyhow!("Argument to {} is wrong type", name))?;
@@ -209,9 +212,10 @@ impl<E: LispExpression> Atom<E> for Lambda<E> {
             })
             .collect::<Result<Vec<_>>>()
             .with_context(|| anyhow!("Could not evaluate arguments to {}", self))?;
-        if arguments.len() > self.parameters.len() {
-            bail!("Too many arguments to lambda")
-        }
+        ensure!(
+            arguments.len() <= self.parameters.len(),
+            "Too many arguments to lambda"
+        );
         let mut env: Environment<E> = self.env.clone();
         for (parameter, argument) in self.parameters.iter().zip(&arguments) {
             env.set(parameter.clone(), argument.clone())
@@ -259,9 +263,11 @@ impl<E: LispExpression> Atom<E> for Macro<E> {
     }
 
     fn call(&self, arguments: &[E], env: &mut Environment<E>) -> Result<E> {
-        if arguments.len() > self.parameters.len() {
-            bail!("Too many arguments to lambda")
-        }
+        ensure!(
+            arguments.len() <= self.parameters.len(),
+            "Too many arguments to lambda"
+        );
+
         let mut macro_env: Environment<E> = self.env.clone();
         for (parameter, argument) in self.parameters.iter().zip(arguments) {
             macro_env.set(parameter.clone(), argument.clone())
@@ -341,10 +347,11 @@ impl<E: LispExpression> Atom<E> for List<E> {
     }
 
     fn call(&self, arguments: &[E], _env: &mut Environment<E>) -> Result<E> {
-        if arguments.len() > 1 {
-            // TODO should this be the case?
-            bail!("Cannot index array using more than one index")
-        }
+        // TODO should this be the case?
+        ensure!(
+            arguments.len() == 1,
+            "Cannot index array using more than one index"
+        );
         if let Ok(number) = <E as ToAndFrom<Number>>::try_into_atom(&arguments[0]) {
             if number.0 < 0. || number.0 > self.0.len() as f64 - 1.0 {
                 bail!(
