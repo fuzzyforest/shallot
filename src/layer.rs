@@ -55,7 +55,8 @@ macro_rules! create_layer {
             $$($$atom:ident$$(<$$generic:tt>)?,)* ; // Atoms in the done layers
             $$($$name:literal -> $$value:expr)* // Builtins of the top layer
            ) => {
-             create_expression!(
+             dedup_call!(create_expression! ,
+               (
                Expression,
                $($atom$(<$generic>)?,)*
                $$($$atom$$(<$$generic>)?,)*
@@ -66,6 +67,7 @@ macro_rules! create_layer {
                Macro<Expression>,
                Number,
                Symbol
+               )
              );
 
              pub fn set_environment<Expression>(env: &mut Environment<Expression>)

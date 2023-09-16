@@ -1,6 +1,9 @@
 #![feature(macro_metavar_expr)]
 use anyhow::{anyhow, bail, Context, Result};
 
+extern crate shallot_dedup;
+pub use shallot_dedup::dedup_call;
+
 mod atoms;
 pub use atoms::*;
 mod token;
@@ -12,7 +15,7 @@ mod errors;
 pub use environment::*;
 pub use errors::TypeError;
 mod expression;
-pub use expression::{Expression, LispExpression, ToAndFrom};
+pub use expression::{LispExpression, ToAndFrom};
 
 mod repl;
 pub use repl::run_repl;

@@ -13,4 +13,9 @@ name = "shallot"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "shallot-dedup",
 ]
+
+[[package]]
+name = "shallot-dedup"
+version = "0.1.0"

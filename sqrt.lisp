@@ -1,7 +1,7 @@
 (list
   (define 'defun (μ (name params value) (list define (list '' name) (list λ params value))))
   (defun target (x) (- (* x x) 2))
-  (define 'ε 0.00001)
+  (define 'ε 0.001)
   (defun ∂ (f x) (/ (- (f (+ x ε)) (f (- x ε))) (* 2 ε)))
   (defun newton-improve (f x) (- x (/ (f x) ((∂ f) x))))
 

@@ -36,7 +36,7 @@ pub trait LispExpression:
     }
 
     fn is_truthy(&self) -> bool {
-        self.as_list().map(|l| l.0.is_empty()).unwrap_or(false)
+        self.as_list().map(|l| !l.0.is_empty()).unwrap_or(true)
     }
 
     fn parse_from_token(token: &Token) -> Self;
@@ -103,7 +103,7 @@ pub trait LispExpression:
 
 #[macro_export]
 macro_rules! create_expression {
-    ($expression_name:ident, $($atom:tt$(<$g:tt>)?),+) => {
+    ($expression_name:ident, $($atom:tt$(<$g:tt>)?,)+) => {
         #[derive(Clone, Debug, PartialEq)]
         pub enum $expression_name {
             $(
@@ -159,14 +159,3 @@ macro_rules! create_expression {
         )?
     };
 }
-
-create_expression!(
-    Expression,
-    Symbol,
-    Number,
-    Lambda<Expression>,
-    Macro<Expression>,
-    BuiltinFunction<Expression>,
-    BuiltinMacro<Expression>,
-    List<Expression>
-);

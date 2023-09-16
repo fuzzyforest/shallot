@@ -1,5 +1,8 @@
+#![feature(macro_metavar_expr)]
 use anyhow::Result;
 use shallot::*;
+
+create_layer!(atoms | builtins);
 
 fn main() -> Result<()> {
     let mut environment: Environment<Expression> = Environment::default();
